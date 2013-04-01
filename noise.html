@@ -14,12 +14,11 @@
     */
 </style>
 <script type="text/javascript" src="NoiseFunctions.js"></script>
-<script type="text/javascript" src="context_blender.js"></script>
 <script type="text/javascript">
 
 var CloudCover = function(noiseSource) {
     
-    var _cloudCover = 130, _cloudSharpness = 0.88;
+    var _cloudCover = 120, _cloudSharpness = 0.91;
     var _xScale = 1/200, _yScale = 1/400, _zScale = 1/4;
     var _noiseSource;
 
@@ -67,7 +66,10 @@ var CloudCover = function(noiseSource) {
         var expEl = document.getElementById("exp");
         var skyEl = document.getElementById("sky");
 
-        skyEl.getContext("2d").blendOnto(expEl.getContext("2d"),"screen");
+        var expCtx = expEl.getContext("2d");
+        expCtx.globalCompositeOperation = "screen";
+        expCtx.drawImage(skyEl,0,0);
+        expCtx.globalCompositeOperation = "normal";
     }
 
     var cloudExpCurve = function(v) {
@@ -103,7 +105,9 @@ function renderSky() {
     sunCtx.fillStyle = sunGradient;
     sunCtx.fillRect(0,0,sunCnv.width,sunCnv.height);
 
-    sunCtx.blendOnto(skyCtx,"screen");
+    skyCtx.globalCompositeOperation = "screen";
+    skyCtx.drawImage(sunCnv,0,0);
+    skyCtx.globalCompositeOperation = "normal";
 }
 
 
@@ -119,14 +123,14 @@ window.onload = function() {
     window.simplex = new SimplexNoise();
     window.cloudCover = new CloudCover(window.simplex);
     interval = setInterval(function() {
-            cloudCover.renderNoise(canvas,1/64,1/1,z);
-            cloudCover.renderNoise(canvas,1/32,1/4,z);
-            cloudCover.renderNoise(canvas,1/16,1/8,z);
-            cloudCover.renderNoise(canvas,1/8,1/16,z);
+            cloudCover.renderNoise(canvas,1/128,1/1,z*1);
+            cloudCover.renderNoise(canvas,1/32,1/4,z*1/2);
+            cloudCover.renderNoise(canvas,1/16,1/8,z*1/4);
+            cloudCover.renderNoise(canvas,1/8,1/16,z*1/8);
             cloudCover.exp(canvas);
             cloudCover.blend();
             z++;
-            },250);
+            },100);
 };
 function stopit() { clearInterval(interval); }
 
