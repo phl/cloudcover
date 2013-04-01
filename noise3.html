@@ -1,0 +1,277 @@
+<html>
+<head>
+<style type="text/css">
+    #hideme {
+        /*    display: none;
+        */
+    }
+
+    /*
+    #exp {
+        -webkit-transform: rotateX(70deg) perspective(5000);
+        -webkit-perspective-origin: 50% 75%;
+    }
+    */
+</style>
+<script type="text/javascript" src="NoiseFunctions.js"></script>
+<script type="text/javascript" src="context_blender.js"></script>
+<script type="text/javascript">
+
+var CloudCover = function(canvas,noiseSource) {
+    
+    var _cloudCover = 128, _cloudSharpness = 0.84;
+    var _xScale = 1/300, _yScale = 1/400, _zScale = 1/900;
+
+    var _noiseSource = noiseSource;
+    var _canvas = canvas;
+    var _skyCnv;
+    var _bufferCnv;
+    var _octaves = [];
+
+
+    var _initOctave = function(cnv, z) {
+
+        var ctx = cnv.getContext("2d");
+        var imageData = ctx.createImageData(cnv.width, cnv.height);
+
+        var w = cnv.width;
+        var h = cnv.height;
+
+        var pixelData = imageData.data;
+        for (var i=pixelData.length - 4; i>=0 ; i-=4) {
+            var x = (i/4) % w;
+            var y = Math.floor((i/4)/h);
+            
+            var noise = (1 + (((_noiseSource.noise(x,y,z) * (w-x) * (h-y)) +
+                    (_noiseSource.noise(x-w,y,z) * x * (h-y)) +
+                    (_noiseSource.noise(x-w,y-h,z) * x * y) +
+                    (_noiseSource.noise(x,y-h,z) * (w-x) *y)) / (w*h)))/2 * 255;
+
+            pixelData[i] = pixelData[i+1] = pixelData[i+2] = noise;
+            pixelData[i+3] = 255; // alpha
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+    };
+
+
+    this.renderOctave = function(octave) {
+
+        var ctx = _canvas.getContext("2d");
+        var canvasSize = _canvas.width;
+
+        var tile = _octaves[octave].getTile();
+        var scale = _octaves[octave].scale;
+
+        var tileSize = tile.width;
+
+        var bufferCtx = _bufferCnv.getContext("2d");
+
+        for (var i=0 ; i<scale ; i++) {
+            for (var j=0 ; j<scale ; j++) {
+                bufferCtx.drawImage(tile,0,0,tileSize,tileSize,
+                        i*tileSize,j*tileSize,tileSize,tileSize); 
+            }
+        }
+        
+        var savedAlpha = ctx.globalAlpha;
+        ctx.globalAlpha = _octaves[octave].alpha;
+
+        ctx.drawImage(_bufferCnv,0,0,tileSize*scale,tileSize*scale,
+            0,0,canvasSize,canvasSize); 
+
+        ctx.globalAlpha = savedAlpha;
+    };
+
+    var _exp = function() {
+
+        var expEl = document.getElementById("exp"); // TODO
+        var ctx = _canvas.getContext("2d");
+
+        var imageData = ctx.getImageData(0,0,_canvas.width, _canvas.height);
+        var data = imageData.data;
+        for (var i=data.length - 4; i>=0 ; i-=4) {
+            data[i]=data[i+1]=data[i+2] = _cloudExpCurve(data[i]);
+        }
+        expEl.getContext("2d").putImageData(imageData,0,0);
+    };
+
+    var _blend = function() {
+
+        var expEl = document.getElementById("exp"); // TODO
+        _skyCnv.getContext("2d").blendOnto(expEl.getContext("2d"),"screen");
+    };
+
+    var _cloudExpCurve = function(v) {
+        var c = v - _cloudCover
+        if (c < 0) c = 0;
+ 
+        return 255 - (Math.pow(_cloudSharpness,c/2) * 255);
+    };
+
+    var _renderSky = function() {
+
+        _skyCnv = document.createElement("canvas");
+        _skyCnv.width = _canvas.width;
+        _skyCnv.height = _canvas.height;
+
+        var skyCtx = _skyCnv.getContext("2d");
+
+        var skyGradient = skyCtx.createLinearGradient(0,0,0,_skyCnv.height);
+        skyGradient.addColorStop(0, '#13c');
+        skyGradient.addColorStop(0.7, '#6af');
+        skyGradient.addColorStop(1.0, '#cdf');
+
+        skyCtx.fillStyle = skyGradient;
+        skyCtx.fillRect(0,0,_skyCnv.width,_skyCnv.height);
+
+        var sunCnv = document.createElement("canvas");
+        sunCnv.width = _skyCnv.width;
+        sunCnv.height = _skyCnv.width;
+
+        var sunCtx = sunCnv.getContext("2d");
+
+        var sunGradient = sunCtx.createRadialGradient(35,35,20,50,50,250);
+        sunGradient.addColorStop(0,'#ffffe0');
+        sunGradient.addColorStop(1,'rgba(0,0,0,0)');
+
+        sunCtx.fillStyle = sunGradient;
+        sunCtx.fillRect(0,0,sunCnv.width,sunCnv.height);
+
+        sunCtx.blendOnto(skyCtx,"screen");
+    };
+
+    this.tick = function() {
+        for (var i = _octaves.length-1 ; i >= 0 ; i--) {
+            _octaves[i].tick();
+        }
+    };
+
+    this.draw = function() {
+        for (var i = 0 ; i < _octaves.length ; i++) {
+            this.renderOctave(i);
+        }
+
+        _exp();
+        _blend();
+    };
+
+    function Octave(index,tileSize,tickRate,alpha) {
+
+        this.scale = Math.pow(2,index)/2;
+        this.alpha = alpha; 
+
+        var _tileSize = tileSize;
+        var _rate = tickRate / 100;
+
+        var _phase = 0;
+        var _lastAlpha = 1;
+        var _tile0;
+        var _tile1;
+        var _animTile;
+
+        this.tick = function() {
+
+            if ((_phase += _rate) >= Math.PI/4) {
+
+                var temp = _tile0;
+                _tile0 = _tile1;
+                _tile1 = temp;
+
+                _makeNoise(_tile1, Math.random()*33);
+                _phase -= Math.PI/4;
+            }
+
+            var alpha = Math.tan(_phase);
+
+            // optimisation - only redraw if alpha - previous alpha >= somedelta
+            if (Math.abs(alpha - _lastAlpha) > 0.005) {
+                var ctx = _animTile.getContext("2d");
+                ctx.globalAlpha = 1.0;
+                ctx.drawImage(_tile0,0,0,_tileSize,_tileSize); 
+
+                ctx.globalAlpha = Math.tan(_phase);
+                ctx.drawImage(_tile1,0,0,_tileSize,_tileSize);
+                _lastAlpha = alpha;
+            }
+        };
+
+        this.getTile = function() {
+            return _animTile;
+        };
+
+        var _makeNoise = function(tile, z) {
+
+            var ctx = tile.getContext("2d");
+            var imageData = ctx.createImageData(tile.width, tile.height);
+
+            var w = tile.width;
+            var h = tile.height;
+
+            var pixelData = imageData.data;
+            for (var i=pixelData.length - 4; i>=0 ; i-=4) {
+                var x = (i/4) % w;
+                var y = Math.floor((i/4)/h);
+
+                var noise = (1 + (((noiseSource.noise(x,y,z) * (w-x) * (h-y)) +
+                                (noiseSource.noise(x-w,y,z) * x * (h-y)) +
+                                (noiseSource.noise(x-w,y-h,z) * x * y) +
+                                (noiseSource.noise(x,y-h,z) * (w-x) *y)) / (w*h)))/2 * 255;
+
+                pixelData[i] = pixelData[i+1] = pixelData[i+2] = noise;
+                pixelData[i+3] = 255; // alpha
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        };
+
+        var _initTile = function() {
+
+            var tile = document.createElement("canvas");
+            tile.width = tile.height = _tileSize;
+            _makeNoise(tile, Math.random()*57);
+            return tile;
+        };
+
+        (function() {
+         _tile0 = _initTile();
+         _tile1 = _initTile();
+         _animTile = _initTile();
+        })();
+    }
+
+    (function() {
+        _octaves[0] = new Octave(0,32,1/23,1);
+        _octaves[1] = new Octave(1,32,1/19,1/4);
+        _octaves[2] = new Octave(2,32,1/17,1/8);
+        _octaves[3] = new Octave(3,32,1/13,1/16);
+
+        _bufferCnv = document.createElement("canvas");
+        _bufferCnv.width = _bufferCnv.height = 128;
+        _renderSky(_canvas);
+    })();
+}
+
+window.onload = function() {
+    document.getElementById("stopButton").onclick = stopit;
+    cloudCover = new CloudCover(document.getElementById("canvas"),new FastNoise());
+
+function stopit() { clearInterval(interval); }
+
+    interval = setInterval(function() {
+            cloudCover.tick();
+            cloudCover.draw();
+    },100);
+};
+
+
+
+</script>
+</head>
+<body>
+    <canvas id="exp" width="256" height="256"></canvas>
+    <canvas id="canvas" width="256" height="256"></canvas>
+    <hr/>
+    <input type="button" id="stopButton" value="STOP!"/>
+</body>
+</html>

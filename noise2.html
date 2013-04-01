@@ -1,0 +1,183 @@
+<html>
+<head>
+<style type="text/css">
+    #hideme {
+        /*    display: none;
+        */
+    }
+
+    /*
+    #exp {
+        -webkit-transform: rotateX(70deg) perspective(5000);
+        -webkit-perspective-origin: 50% 75%;
+    }
+    */
+</style>
+<script type="text/javascript" src="NoiseFunctions.js"></script>
+<script type="text/javascript" src="context_blender.js"></script>
+<script type="text/javascript">
+
+var CloudCover = function(canvas,noiseSource,seed) {
+    
+    var _cloudCover = 130, _cloudSharpness = 0.88;
+    var _xScale = 1/300, _yScale = 1/400, _zScale = 1/900;
+    var _noiseSource;
+
+    var _canvas = canvas;
+    var _skyCnv;
+
+    var setNoiseSource = function(noiseSource) {
+        _noiseSource = noiseSource;
+    }
+
+    var initBuffer = function(z) {
+
+        var noisetile = document.getElementById("noisetile");
+        var ctx = noisetile.getContext("2d");
+
+        var rawNoiseSize = noisetile.width;
+
+        var rawNoiseImg = ctx.createImageData(rawNoiseSize, rawNoiseSize);
+        var noisePixels = rawNoiseImg.data;
+
+        for (var i=noisePixels.length - 4; i>=0 ; i-=4) {
+            var x = (i/4) % rawNoiseSize;
+            var y = Math.floor((i/4)/rawNoiseSize);
+            var noise = (1 + _noiseSource.noise(x,y,z))/2 * 255;
+            noisePixels[i] = noisePixels[i+1] = noisePixels[i+2] = noise;
+            noisePixels[i+3] = 255;
+        }
+
+        ctx.putImageData(rawNoiseImg, 0, 0);
+    }
+
+    this.renderNoise = function(scale,alpha,t) {
+
+        var noisetile = document.getElementById("noisetile");
+        var tileSize = noisetile.width;
+
+        var buffer = document.getElementById("buffer");
+        var bufferSize = buffer.width;
+        var bufferCtx = buffer.getContext("2d");
+
+        var ctx = _canvas.getContext("2d");
+        var canvasSize = _canvas.width;
+
+        for (var i=0 ; i<scale ; i++) {
+            for (var j=0 ; j<scale ; j++) {
+                bufferCtx.drawImage(noisetile,0,0,tileSize,tileSize,
+                        i*tileSize,j*tileSize,tileSize,tileSize); 
+            }
+        }
+        
+        var savedAlpha = ctx.globalAlpha;
+        ctx.globalAlpha = alpha;
+
+        ctx.drawImage(buffer,0,0,tileSize*scale,tileSize*scale,
+            0,0,canvasSize,canvasSize); 
+
+        ctx.globalAlpha = savedAlpha;
+    }
+
+    this.exp = function() {
+        var expEl = document.getElementById("exp");
+        var ctx = _canvas.getContext("2d");
+
+        var imageData = ctx.getImageData(0,0,_canvas.width, _canvas.height);
+        var data = imageData.data;
+        for (var i=data.length - 4; i>=0 ; i-=4) {
+            data[i]=data[i+1]=data[i+2] = cloudExpCurve(data[i]);
+        }
+        expEl.getContext("2d").putImageData(imageData,0,0);
+    }
+
+    this.blend = function() {
+        var expEl = document.getElementById("exp");
+
+        _skyCnv.getContext("2d").blendOnto(expEl.getContext("2d"),"screen");
+    }
+
+    var cloudExpCurve = function(v) {
+        var c = v - _cloudCover
+        if (c < 0) c = 0;
+ 
+        return 255 - (Math.pow(_cloudSharpness,c/2) * 255);
+    }
+
+    var renderSky = function() {
+
+        _skyCnv = document.createElement("canvas");
+        _skyCnv.width = _canvas.width;
+        _skyCnv.height = _canvas.height;
+
+        var skyCtx = _skyCnv.getContext("2d");
+
+        var skyGradient = skyCtx.createLinearGradient(0,0,0,_skyCnv.height);
+        skyGradient.addColorStop(0, '#13c');
+        skyGradient.addColorStop(0.7, '#6af');
+        skyGradient.addColorStop(1.0, '#cdf');
+
+        skyCtx.fillStyle = skyGradient;
+        skyCtx.fillRect(0,0,_skyCnv.width,_skyCnv.height);
+
+        var sunCnv = document.createElement("canvas");
+        sunCnv.width = _skyCnv.width;
+        sunCnv.height = _skyCnv.width;
+
+        var sunCtx = sunCnv.getContext("2d");
+
+        var sunGradient = sunCtx.createRadialGradient(35,35,20,50,50,250);
+        sunGradient.addColorStop(0,'#ffffe0');
+        sunGradient.addColorStop(1,'rgba(0,0,0,0)');
+
+        sunCtx.fillStyle = sunGradient;
+        sunCtx.fillRect(0,0,sunCnv.width,sunCnv.height);
+
+        sunCtx.blendOnto(skyCtx,"screen");
+    }
+
+    setNoiseSource(noiseSource);
+    renderSky(_canvas);
+    initBuffer(seed);
+}
+
+
+
+window.onload = function() {
+
+
+    document.getElementById("stopButton").onclick = stopit;
+
+    var canvas = document.getElementById("canvas");
+    var z=57*Math.random();
+
+    window.cloudCover = new CloudCover(document.getElementById("canvas"),new FastNoise(), z);
+
+//    interval = setInterval(function() {
+
+            cloudCover.renderNoise(1/2,1/1,z);
+            cloudCover.renderNoise(2/2,1/4,z);
+            cloudCover.renderNoise(4/2,1/8,z);
+            cloudCover.renderNoise(8/2,1/16,z);
+            cloudCover.exp();
+            cloudCover.blend();
+            z++;
+//            },250);
+};
+function stopit() { clearInterval(interval); }
+
+
+
+</script>
+</head>
+<body>
+    <canvas id="exp" width="256" height="256"></canvas>
+    <div id="hideme">
+    <canvas id="canvas" width="256" height="256"></canvas>
+    <canvas id="buffer" width="256" height="256"></canvas>
+    <canvas id="noisetile" width="32" height="32"></canvas>
+    </div>
+    <hr/>
+    <input type="button" id="stopButton" value="STOP!"/>
+</body>
+</html>

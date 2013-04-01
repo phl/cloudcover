@@ -1,0 +1,148 @@
+<html>
+<head>
+<style type="text/css">
+    #hideme {
+        /*    display: none;
+        */
+    }
+
+    /*
+    #exp {
+        -webkit-transform: rotateX(70deg) perspective(5000);
+        -webkit-perspective-origin: 50% 75%;
+    }
+    */
+</style>
+<script type="text/javascript" src="NoiseFunctions.js"></script>
+<script type="text/javascript" src="context_blender.js"></script>
+<script type="text/javascript">
+
+var CloudCover = function(noiseSource) {
+    
+    var _cloudCover = 130, _cloudSharpness = 0.88;
+    var _xScale = 1/200, _yScale = 1/400, _zScale = 1/4;
+    var _noiseSource;
+
+    this.setNoiseSource = function(noiseSource) {
+        _noiseSource = noiseSource;
+    }
+
+    this.renderNoise = function(canvas,scale,alpha,t) {
+
+        var buffer = document.getElementById("buffer");
+        var ctx = buffer.getContext("2d");
+
+        var canvasSize = canvas.width;
+        var rawNoiseSize = 256;
+
+        var rawNoiseImg = ctx.createImageData(rawNoiseSize, rawNoiseSize);
+        var noisePixels = rawNoiseImg.data;
+
+        for (var i=noisePixels.length - 4; i>=0 ; i-=4) {
+            var x = (i/4) % rawNoiseSize;
+            var y = Math.floor((i/4)/rawNoiseSize);
+            var noise = (1 + _noiseSource.noise(t*_xScale+x*scale,t*_yScale+y*scale,t*_zScale*scale))/2 * 255;
+            noisePixels[i] = noisePixels[i+1] = noisePixels[i+2] = noise;
+            noisePixels[i+3] = 255*alpha;
+        }
+
+        ctx.putImageData(rawNoiseImg, 0, 0);
+        canvas.getContext("2d").drawImage(buffer,0,0,canvasSize,canvasSize,
+                                                0,0,canvasSize,canvasSize);
+    }
+
+    this.exp = function(canvas) {
+        var expEl = document.getElementById("exp");
+        var ctx = canvas.getContext("2d");
+
+        var imageData = ctx.getImageData(0,0,canvas.width, canvas.height);
+        var data = imageData.data;
+        for (var i=data.length - 4; i>=0 ; i-=4) {
+            data[i]=data[i+1]=data[i+2] = cloudExpCurve(data[i]);
+        }
+        expEl.getContext("2d").putImageData(imageData,0,0);
+    }
+
+    this.blend = function() {
+        var expEl = document.getElementById("exp");
+        var skyEl = document.getElementById("sky");
+
+        skyEl.getContext("2d").blendOnto(expEl.getContext("2d"),"screen");
+    }
+
+    var cloudExpCurve = function(v) {
+        var c = v - _cloudCover
+        if (c < 0) c = 0;
+ 
+        return 255 - (Math.pow(_cloudSharpness,c/2) * 255);
+    }
+
+    this.setNoiseSource(noiseSource);
+}
+
+function renderSky() {
+
+    var skyCnv = document.getElementById("sky");
+    var skyCtx = skyCnv.getContext("2d");
+
+    var skyGradient = skyCtx.createLinearGradient(0,0,0,skyCnv.height);
+    skyGradient.addColorStop(0, '#13c');
+    skyGradient.addColorStop(0.7, '#6af');
+    skyGradient.addColorStop(1.0, '#cdf');
+
+    skyCtx.fillStyle = skyGradient;
+    skyCtx.fillRect(0,0,skyCnv.width,skyCnv.height);
+
+    var sunCnv = document.getElementById("sun");
+    var sunCtx = sunCnv.getContext("2d");
+
+    var sunGradient = sunCtx.createRadialGradient(35,35,20,50,50,250);
+    sunGradient.addColorStop(0,'#ffffe0');
+    sunGradient.addColorStop(1,'rgba(0,0,0,0)');
+
+    sunCtx.fillStyle = sunGradient;
+    sunCtx.fillRect(0,0,sunCnv.width,sunCnv.height);
+
+    sunCtx.blendOnto(skyCtx,"screen");
+}
+
+
+window.onload = function() {
+
+    renderSky();
+
+    document.getElementById("stopButton").onclick = stopit;
+
+    var canvas = document.getElementById("canvas");
+    var z=Math.random();//0.2;
+    window.perlin = new PerlinNoise();
+    window.simplex = new SimplexNoise();
+    window.cloudCover = new CloudCover(window.simplex);
+    interval = setInterval(function() {
+            cloudCover.renderNoise(canvas,1/64,1/1,z);
+            cloudCover.renderNoise(canvas,1/32,1/4,z);
+            cloudCover.renderNoise(canvas,1/16,1/8,z);
+            cloudCover.renderNoise(canvas,1/8,1/16,z);
+            cloudCover.exp(canvas);
+            cloudCover.blend();
+            z++;
+            },250);
+};
+function stopit() { clearInterval(interval); }
+
+
+
+</script>
+</head>
+<body>
+    <canvas id="exp" width="256" height="256"></canvas>
+    <div id="hideme">
+    <canvas id="canvas" width="256" height="256"></canvas>
+    <canvas id="buffer" width="256" height="256"></canvas>
+    <canvas id="sun" width="256" height="256"></canvas>
+    <canvas id="sky" width="256" height="256"></canvas>
+    </div>
+    <hr/>
+    <input type="button" id="stopButton" value="STOP!"/>
+</body>
+</html>
